@@ -3,15 +3,14 @@ import numpy as np
 from causallearn.search.ConstraintBased.PC import pc
 from causallearn.utils.cit import CIT
 from causallearn.utils.cit import fisherz
-from matplotlib import image as mpimg, pyplot as plt
 import json
 import os
 import io
 import warnings
-from langchain.agents import Tool
 import matplotlib
 from econml.dml import LinearDML
 from tools.util import has_confounder, has_collider, Relationship
+from tools.gpt_api import ChatGPT
 warnings.filterwarnings("ignore")
 matplotlib.use('TkAgg')
 
@@ -309,3 +308,128 @@ def Determine_edge_direction(input_str, memory):
             return prefix + f"There is no direct edge linking  {activate_var[0]} and {activate_var[1]}.{activate_var[0]} doesn't directly cause {activate_var[1]}."
     except Exception as e:
         return str(e)
+    
+
+def parse_dag_from_file(filename):
+    try:
+        current_dir = os.path.dirname(os.path.abspath(__file__))  # 获取当前脚本所在目录
+        parent_dir = os.path.dirname(current_dir)  # 获取当前脚本所在目录的上级目录
+        file_path = os.path.join(parent_dir, filename)  # 拼接成绝对路径
+        with open(file_path, 'r', encoding='utf-8') as file:
+            lines = file.readlines()
+        
+        nodes = []
+        edges = []
+        reading_nodes = False
+        reading_edges = False
+
+        for line in lines:
+            # print("befroe strip",line)
+            line = line.strip()
+            # print("after strip",line)
+            if not line:
+                continue
+            if line.startswith("Graph Nodes:"):
+                reading_nodes = True
+            elif reading_nodes:
+                nodes = line.split(";")
+                reading_nodes = False
+            elif line.startswith("Graph Edges:"):
+                reading_edges = True
+            elif reading_edges:
+                if "-->" in line:
+                    edge = line.split(".")[1]
+                    edge = tuple(map(str.strip, edge.split("-->")))
+                    edges.append(edge)
+        
+        return {"nodes": nodes, "edges": edges}
+    
+    except Exception as e:
+        return {"error": f"Failed to parse file: {str(e)}"}
+    
+
+def summarize_dag(input_str):
+    '''
+    Args:
+        input_str: json string
+        {
+            "filename":..., # filename for the causal graph to summarize
+        }
+    '''
+    try:
+        params = json.loads(input_str)
+        filename = params.get("filename")
+        dag_data = parse_dag_from_file(filename)
+        
+        if "error" in dag_data:
+            return dag_data["error"]
+        
+        nodes_str = ", ".join(dag_data["nodes"])
+        edges_str = "\n".join([f"{src} → {dst}" for src, dst in dag_data["edges"]])
+        prompt = f"""
+        Given the following DAG structure:
+
+        **Nodes:**
+        {nodes_str}
+
+        **Edges:**
+        {edges_str}
+
+        Please provide a concise summary of this DAG. 
+        Identify key causal relationships, confounders, colliders, and any other important structural insights.
+        """
+        
+        llm = ChatGPT()
+        reason, response = llm.call(prompt)
+        print(reason)
+        
+        return response
+        
+    except Exception as e:
+        return str(e)
+    
+def analyze_dag(input_str):
+    """
+    Args:
+        input_str: json string
+        {
+            "filename":..., # filename for the causal graph to summarize
+        }
+    """
+    try:
+        params = json.loads(input_str)
+        filename = params.get("filename")
+        dag_data = parse_dag_from_file(filename)
+        if "error" in dag_data:
+            return dag_data["error"]
+        
+        nodes_str = ", ".join(dag_data["nodes"])
+        edge_analyses = []
+        
+        for src, dst in dag_data["edges"]:
+            prompt = f"""
+            We have a directed acyclic graph (DAG) with the following nodes:
+            {nodes_str}
+            
+            Now, let's analyze the causal relationship between "{src}" and "{dst}".
+            
+            - Is the edge "{src} → {dst}" a reasonable causal connection?
+            - If yes, explain why.
+            - If no, explain why it may be incorrect or misleading.
+            - If uncertain, explain possible conditions under which it could hold.
+            """
+            
+            llm = ChatGPT()  
+            reason, response = llm.call(prompt)
+            # print(f"Analysis for {src} → {dst}:\n{reason}\n")
+
+            edge_analyses.append({
+                "edge": f"{src} → {dst}",
+                "analysis": response
+            })
+        
+        return edge_analyses
+
+    except Exception as e:
+        return str(e)
+

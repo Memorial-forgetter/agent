@@ -1,7 +1,7 @@
 from langchain_community.chat_models import ChatOpenAI
 from langchain import hub
 from langchain.agents import AgentExecutor, create_react_agent
-from tools.tool import empty_tools, collider, confound, edge_direction, condition_independent_test_tools, generate_causalgraph_tool, ate_tool
+from tools.tool import empty_tools, collider, confound, edge_direction, condition_independent_test_tools, generate_causalgraph_tool, ate_tool, summarize_dag_tool, analyze_dag_tool
 
 memory = None
 api_key = 'sk-rdffprsjjtdjnfhivtftvpiobqdrahnxgmmnwhrjxxrpxfcj'
@@ -60,9 +60,10 @@ def get_agent():
     llm = ChatOpenAI(temperature=0.5, 
                     openai_api_key=api_key,
                     model_name="Pro/deepseek-ai/DeepSeek-R1",
-                    openai_api_base='https://api.siliconflow.cn/v1')
-    tools = [condition_independent_test_tools, generate_causalgraph_tool, empty_tools, ate_tool,collider,confound,edge_direction]
-    agent = create_react_agent(llm, [condition_independent_test_tools, generate_causalgraph_tool, empty_tools, ate_tool,collider,confound,edge_direction], prompt)
+                    openai_api_base='https://api.siliconflow.cn/v1',
+                    streaming=True)
+    tools = [condition_independent_test_tools, generate_causalgraph_tool, empty_tools, ate_tool,collider,confound,edge_direction,summarize_dag_tool,analyze_dag_tool]
+    agent = create_react_agent(llm, tools, prompt)
     agent_executor = AgentExecutor(agent=agent, 
                                 tools=tools, 
                                 verbose=True,

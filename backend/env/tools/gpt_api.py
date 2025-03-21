@@ -34,21 +34,26 @@ class ChatGPT:
         )
 
     def call(self, prompt,model = "Pro/deepseek-ai/DeepSeek-R1"):
-        answer = None
         self.conversation_list.append(
             {"role": "system", "content": "You are a helpful instruction-following assistant."})
         self.conversation_list.append({"role": "user", "content": prompt})
         try:
-            answer = ""
-
-            response = self.client.chat.completions.create(model=model, messages=self.conversation_list, temperature=0.5)
-            answer = response.choices[0].message.content.strip()
-            self.conversation_list = []
-            print("Answer:", answer)
+            reasoning_content = ""
+            content = ""
+            response = self.client.chat.completions.create(model=model, messages=self.conversation_list, temperature=0.5, stream=True)
+            for chunk in response:
+                if chunk.choices[0].delta.reasoning_content:
+                    # print(chunk.choices[0].delta.reasoning_content)
+                    reasoning_content += chunk.choices[0].delta.reasoning_content
+                if chunk.choices[0].delta.content:
+                    print(chunk.choices[0].delta.content, end="", flush=True)
+                    content += chunk.choices[0].delta.content
+            # self.conversation_list = []
+            
         except Exception as e:
             print("Call Openai API Error:", e)
             raise e
-        return answer
+        return reasoning_content, content
 
 gpt = ChatGPT()
 # gpt.call("What is the capital of the United States?")
